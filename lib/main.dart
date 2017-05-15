@@ -9,6 +9,8 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_database/ui/firebase_animated_list.dart';
 
 final ThemeData kIOSTheme = new ThemeData(
   primarySwatch: Colors.orange,
@@ -24,6 +26,7 @@ final ThemeData kDefaultTheme = new ThemeData(
 final googleSignIn = new GoogleSignIn();
 final analytics = new FirebaseAnalytics();
 final auth = FirebaseAuth.instance;
+final reference = FirebaseDatabase.instance.reference().child('messages');
 
 const String _name = "Your Name";
 
@@ -61,14 +64,14 @@ class FriendlychatApp extends StatelessWidget {
 
 @override
 class ChatMessage extends StatelessWidget {
-  ChatMessage({this.text, this.animationController});
-  final String text;
-  final AnimationController animationController;
+  ChatMessage({this.snapshot, this.animation});
+  final DataSnapshot snapshot;
+  final Animation animation;
 
   Widget build(BuildContext context) {
     return new SizeTransition(
       sizeFactor: new CurvedAnimation(
-          parent: animationController, curve: Curves.easeOut),
+          parent: animation, curve: Curves.easeOut),
       axisAlignment: 0.0,
       child: new Container(
         margin: const EdgeInsets.symmetric(vertical: 10.0),
@@ -77,15 +80,20 @@ class ChatMessage extends StatelessWidget {
           children: <Widget>[
             new Container(
               margin: const EdgeInsets.only(right: 16.0),
-              child: new GoogleUserCircleAvatar(googleSignIn.currentUser.photoUrl),
+              child: new GoogleUserCircleAvatar(snapshot.value['senderPhotoUrl']),     //modified
             ),
             new Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                new Text(googleSignIn.currentUser.displayName, style: Theme.of(context).textTheme.subhead),
+                new Text(
+                    snapshot.value['senderName'],                  //modified
+                    style: Theme.of(context).textTheme.subhead),
                 new Container(
                   margin: const EdgeInsets.only(top: 5.0),
-                  child: new Text(text),
+                  child:
+                  new Text(
+                      snapshot.value['text']                        //modified
+                  ),
                 ),
               ],
             ),
@@ -101,7 +109,7 @@ class ChatScreen extends StatefulWidget {
   State createState() => new ChatScreenState();
 }
 
-class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
+class ChatScreenState extends State<ChatScreen> {
   final List<ChatMessage> _messages = <ChatMessage>[];
   final TextEditingController _textController = new TextEditingController();
   bool _isComposing = false;
@@ -121,12 +129,18 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         ),
         body: new Column(children: <Widget>[
           new Flexible(
-              child: new ListView.builder(
-            padding: new EdgeInsets.all(8.0),
-            reverse: true,
-            itemBuilder: (_, int index) => _messages[index],
-            itemCount: _messages.length,
-          )),
+            child: new FirebaseAnimatedList(
+              query: reference,
+                padding: new EdgeInsets.all(8.0),
+                reverse: true,
+                itemBuilder: (_, DataSnapshot snapshot, Animation<double> animation) {
+                  return new ChatMessage(
+                    snapshot: snapshot,
+                    animation: animation
+                  );
+                },
+              ),
+          ),
           new Divider(height: 1.0),
           new Container(
             decoration:
@@ -186,24 +200,12 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   void _sendMessage({ String text }) {
-    ChatMessage message = new ChatMessage(
-      text: text,
-      animationController: new AnimationController(
-        duration: new Duration(milliseconds: 700),
-        vsync: this,
-      ),
-    );
-    setState(() {
-      _messages.insert(0, message);
+    reference.push().set({
+      'text': text,
+      'senderName': googleSignIn.currentUser.displayName,
+      'senderPhotoUrl': googleSignIn.currentUser.photoUrl,
     });
-    message.animationController.forward();
     analytics.logEvent(name: 'send_message');
   }
 
-  @override
-  void dispose() {
-    for (ChatMessage message in _messages)
-      message.animationController.dispose();
-    super.dispose();
-  }
 }
