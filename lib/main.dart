@@ -8,6 +8,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 final ThemeData kIOSTheme = new ThemeData(
   primarySwatch: Colors.orange,
@@ -22,6 +23,7 @@ final ThemeData kDefaultTheme = new ThemeData(
 
 final googleSignIn = new GoogleSignIn();
 final analytics = new FirebaseAnalytics();
+final auth = FirebaseAuth.instance;
 
 const String _name = "Your Name";
 
@@ -33,8 +35,13 @@ Future<Null> _ensureLoggedIn() async {
   GoogleSignInAccount user = googleSignIn.currentUser;
   if (user == null)
     user = await googleSignIn.signInSilently();
-  if (user == null) {
-    await googleSignIn.signIn();
+  if (auth.currentUser == null || auth.currentUser.isAnonymous) {
+    GoogleSignInAuthentication credentials =
+    await googleSignIn.currentUser.authentication;
+    await auth.signInWithGoogle(
+      idToken: credentials.idToken,
+      accessToken: credentials.accessToken,
+    );
     analytics.logLogin();
   }
 }
@@ -98,6 +105,12 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final List<ChatMessage> _messages = <ChatMessage>[];
   final TextEditingController _textController = new TextEditingController();
   bool _isComposing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    auth.signInAnonymously();
+  }
 
   @override
   Widget build(BuildContext context) {
